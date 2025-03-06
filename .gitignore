@@ -1,0 +1,55 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+.venv
+venv/
+ENV/
+env.bak/
+env/
+instance/
+_venv/
+.Python
+Python.framework/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/cache/pip/
+.http-cache/
+.pytest_cache/
+.thumb
+.pypo_cache
+
+# Logs and databases
+logs/
+*.log
+*.sql
+*.sqlite
+*.db
+
+# User specific
+*.user
+*.ini
+*.vscode/
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Python Eggs
+*.egg
+*.egg-info
+*.tox
