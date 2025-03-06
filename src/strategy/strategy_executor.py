@@ -71,12 +71,15 @@ class StrategyExecutor:
                     signal['execution_time'] = datetime.now(timezone.utc).timestamp()
 
                     # Execute order with detailed logging
+                    self.logger.info(f"[StrategyExecutor] Attempting order execution for signal: {signal}") # Log order execution attempt
                     self.logger.info(f"DEBUG: Executing order for signal: {signal['id']}")
                     execution_result = await self.order_executor.execute_order(signal)
 
                     if execution_result:
+                        self.logger.info(f"[StrategyExecutor] Order execution successful - ID: {execution_result.get('order_id', 'unknown')}") # Log order success
                         self.logger.info(f"Order executed successfully - ID: {execution_result.get('order_id', 'unknown')}")
                     else:
+                        self.logger.warning(f"[StrategyExecutor] Order execution failed for signal: {signal['id']}") # Log order failure
                         self.logger.warning(f"Order execution failed for signal: {signal['id']}")
 
                     # Return the signal for main loop tracking
@@ -84,6 +87,7 @@ class StrategyExecutor:
                 else:
                     self.logger.warning(f"Invalid signal generated for {symbol}: {signal}")
             else:
+                self.logger.info(f"[StrategyExecutor] No signal received for {symbol}.") # Log no signal
                 self.logger.info(f"No signal generated for {symbol} in this iteration")
 
             return None
@@ -165,8 +169,10 @@ class StrategyExecutor:
 
             if is_valid:
                 blue_status("Signal passed validation checks")
+                self.logger.info(f"[StrategyExecutor] Risk checks passed.") # Log risk check pass
             else:
                 magenta_warning("Signal rejected by risk manager validation")
+                self.logger.warning(f"[StrategyExecutor] Risk checks failed - signal rejected by risk manager.") # Log risk check fail
 
             return is_valid
 
