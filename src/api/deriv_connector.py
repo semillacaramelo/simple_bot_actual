@@ -170,7 +170,7 @@ class DerivConnector:
             
             # If already subscribed, make a simpler request for the current state
             if symbol in self.active_subscriptions:
-                # Use a different method to get the current price without subscription
+                # Use proposal API to get current price without subscribing again
                 response = await self.api.proposal({
                     'proposal': 1,
                     'amount': 1,
@@ -178,9 +178,9 @@ class DerivConnector:
                     'duration': 1,
                     'duration_unit': 'm',
                     'symbol': symbol,
-                    'contract_type': 'CALL'
+                    'contract_type': 'CALL' # Contract type doesn't matter for price
                 })
-                
+
                 if response and 'error' not in response and 'proposal' in response:
                     return {
                         'symbol': symbol,
@@ -189,11 +189,9 @@ class DerivConnector:
                         'is_trading': True
                     }
             else:
-                # Regular ticks request with subscription
-                response = await self.api.ticks({'ticks': symbol})
-                if response and 'error' not in response:
-                    # Add to active subscriptions
-                    self.active_subscriptions.add(symbol)
+                # Regular ticks request without subscription for new symbol
+                response = await self.api.ticks({'ticks': symbol, 'subscribe': 0})
+                if response and 'error' not in response and 'tick' in response:
                     return {
                         'symbol': symbol,
                         'price': response['tick']['quote'],
@@ -297,8 +295,8 @@ class DerivConnector:
             dict: Trading times
         """
         return {
-            'open': '00:00:00',
-            'close': '23:59:59',
-            'settlement': '23:59:59',
-            'trading_days': [1, 2, 3, 4, 5]  # Monday to Friday
+            'symbol': symbol,
+            'price': 0,
+            'epoch': 0,
+            'is_trading': True
         }

@@ -197,6 +197,6 @@ class StrategyExecutor:
                 'short_window': self.trading_params.get('SHORT_WINDOW'),
                 'medium_window': self.trading_params.get('MEDIUM_WINDOW'),
                 'rsi_period': self.trading_params.get('RSI_PERIOD'),
-                'volatility_threshold': self.trading_params.get('VOLATILITY_THRESHOLD')
+                'volatility_threshold': self.trading_params.get('VOLATILITY_THRESHOLD', 0.02)
             }
         }

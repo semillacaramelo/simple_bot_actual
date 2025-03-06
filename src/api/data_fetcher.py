@@ -32,20 +32,21 @@ class DataFetcher:
             self.logger.info(f"DEBUG: Initializing data for symbol: {symbol}")
             # Check if already subscribed to avoid duplicate subscriptions
             if symbol in self._subscriptions:
-                self.logger.info(f"DEBUG: Already subscribed to {symbol}, skipping initialization")
-                return
+                self.logger.info(f"DEBUG: Already subscribed to {symbol}, skipping subscription")
+                return  # Exit if already subscribed
 
-            # Get initial price data
-            await self._update_price(symbol)
-
-            # Get historical data
-            await self._update_history(symbol)
-
-            # Subscribe to price updates using DerivAPI subscription
+            # Subscribe to price updates only once per symbol
             source = await self.api.subscribe_to_price(symbol, self._price_update_callback)
             if source:
                 self._subscriptions[symbol] = source
                 self.logger.info(f"DEBUG: Successfully subscribed to {symbol} price updates")
+            else:
+                self.logger.warning(f"WARNING: Failed to subscribe to price updates for {symbol}")
+
+            # Initial price and history update (no longer needed immediately after subscription)
+            await self._update_price(symbol)
+            await self._update_history(symbol)
+
 
         except Exception as e:
             self.logger.error(f"ERROR: Error initializing {symbol}: {str(e)}", exc_info=True)

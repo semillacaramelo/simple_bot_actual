@@ -168,20 +168,10 @@ async def main():
                     blue_status(f"📊 DEBUG: Fetching current price for {symbol}...")
                     logger.log(f"DEBUG: Getting price for {symbol}", level='debug')
                     
-                    # Check if we have an active subscription for this symbol
-                    if symbol in api_connector.active_subscriptions:
-                        logger.log(f"Using existing subscription for {symbol}", level='debug')
-                        # Use the last received price or query it without subscribing
-                        ticks_request = {
-                            "ticks": symbol,
-                            "subscribe": 0  # Don't subscribe, just get the current price
-                        }
-                    else:
-                        logger.log(f"Creating new subscription for {symbol}", level='debug')
-                        ticks_request = {
-                            "ticks": symbol,
-                            "subscribe": 1
-                        }
+                    # Fetch current price without subscription
+                    ticks_request = {
+                        "ticks": symbol
+                    }
                     
                     try:
                         ticks_response = await api_connector.api.ticks(ticks_request)

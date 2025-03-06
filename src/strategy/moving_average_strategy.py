@@ -42,9 +42,15 @@ class SignalGenerator:
             'stake_amount': 100.0,  # Default stake amount
             'volatility': volatility,
             'atr_value': atr_value,
-            'duration': 1,  # Default duration
+            'duration': 1,  # Default duration for 1-minute contracts
             'duration_unit': 'm'  # Default to minutes
         }
+
+        # Ensure all signal values are not None and are valid
+        if not all(value is not None for value in signal.values()):
+            self.logger.warning(f"Signal is incomplete, some values are None: {signal}")
+            return None
+
         return signal
 
 
