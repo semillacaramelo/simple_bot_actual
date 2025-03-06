@@ -165,28 +165,77 @@ async def main():
                         green_success('✅ API reconnected successfully.')
 
                     # Get current market price for the symbol
-                    blue_status(f"📊 Fetching current price for {symbol}...")
-                    ticks_request = {
-                        "ticks": symbol,
-                        "subscribe": 1
-                    }
-                    ticks_response = await api_connector.api.ticks(ticks_request)
-                    current_price = float(ticks_response.get('tick', {}).get('quote', 0))
+                    blue_status(f"📊 DEBUG: Fetching current price for {symbol}...")
+                    logger.log(f"DEBUG: Getting price for {symbol}", level='debug')
+                    
+                    # Check if we have an active subscription for this symbol
+                    if symbol in api_connector.active_subscriptions:
+                        logger.log(f"Using existing subscription for {symbol}", level='debug')
+                        # Use the last received price or query it without subscribing
+                        ticks_request = {
+                            "ticks": symbol,
+                            "subscribe": 0  # Don't subscribe, just get the current price
+                        }
+                    else:
+                        logger.log(f"Creating new subscription for {symbol}", level='debug')
+                        ticks_request = {
+                            "ticks": symbol,
+                            "subscribe": 1
+                        }
+                    
+                    try:
+                        ticks_response = await api_connector.api.ticks(ticks_request)
+                        logger.log(f"DEBUG: Received ticks response: {ticks_response}", level='debug')
+                        
+                        if not ticks_response or 'error' in ticks_response:
+                            error_msg = ticks_response.get('error', {}).get('message', 'Unknown error')
+                            red_error(f"❌ Error fetching price: {error_msg}")
+                            logger.log_error(Exception(f"Ticks request failed: {error_msg}"), {'context': 'price_fetch'})
+                            current_price = 0
+                        else:
+                            current_price = float(ticks_response.get('tick', {}).get('quote', 0))
+                            # If this was a subscription, track it
+                            if ticks_request.get('subscribe') == 1 and 'subscription' in ticks_response:
+                                api_connector.active_subscriptions.add(symbol)
+                    except Exception as e:
+                        red_error(f"❌ Error fetching price: {str(e)}")
+                        logger.log_error(e, {'context': 'price_fetch'})
+                        current_price = 0
 
                     if current_price > 0:
                         blue_status(f"💹 Current price for {symbol}: {current_price}")
+                        logger.log(f"Current market price: {current_price}", level='info', symbol=symbol)
+                        
                         # Update any open positions
                         active_trades = order_executor.get_active_trades()
                         if active_trades:
                             cyan_status(f"🔍 Checking {len(active_trades)} active positions...")
+                            logger.log(f"Processing {len(active_trades)} active trades", level='info')
                             for trade_id, trade in active_trades.items():
+                                logger.log(f"DEBUG: Evaluating position {trade_id} at price {current_price}", level='debug', trade=trade)
                                 await order_executor.close_position(trade_id, price=current_price)
                         else:
                             blue_status("📭 No active trades to update")
+                            logger.log("No active trades to update", level='info')
+                    else:
+                        magenta_warning(f"⚠️ Invalid price (0) received for {symbol}. Skipping this iteration.")
+                        logger.log_error(Exception("Invalid price received"), {'context': 'price_validation', 'symbol': symbol})
 
-                    # Execute strategy iteration
+                    # Execute strategy iteration with enhanced logging
                     cyan_status(f"🧠 Executing trading strategy for {symbol}...")
-                    await strategy_executor.execute_iteration(symbol)
+                    logger.log(f"DEBUG: Starting strategy execution for {symbol}", level='debug')
+                    
+                    # Execute strategy with signal tracking
+                    signal = await strategy_executor.execute_iteration(symbol)
+                    
+                    if signal and isinstance(signal, dict) and 'type' in signal:
+                        yellow_signal(f"🎯 New signal generated: {signal['type']} for {symbol} at {signal.get('entry_price', 'N/A')}")
+                        logger.log_signal(signal)
+                        logger.log(f"DEBUG: Signal details - Stop Loss: {signal.get('stop_loss')}, Take Profit: {signal.get('take_profit')}", 
+                                  level='debug', signal_id=signal.get('id', 'unknown'))
+                    else:
+                        blue_status(f"⏳ No new trading signals for {symbol} in this iteration")
+                        logger.log(f"No trading signals generated for {symbol}", level='info')
 
                     # Get and log risk metrics
                     risk_metrics = risk_manager.get_risk_metrics()
@@ -259,6 +308,16 @@ async def main():
         # Clean shutdown
         if api_connector:
             try:
+                # Forget all active subscriptions before disconnecting
+                if api_connector.connected and api_connector.authorized and hasattr(api_connector, 'active_subscriptions'):
+                    for symbol in list(api_connector.active_subscriptions):
+                        logger.log(f"Unsubscribing from {symbol}", level='debug')
+                        try:
+                            await api_connector.api.forget_all('ticks')
+                            api_connector.active_subscriptions.clear()
+                        except Exception as unsub_error:
+                            logger.log_error(unsub_error, {'context': 'unsubscribe'})
+                
                 await api_connector.disconnect()
                 if logger:
                     logger.log('Trading bot shut down successfully', level='info')

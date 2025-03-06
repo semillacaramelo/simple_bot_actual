@@ -40,3 +40,4 @@ pytest-cov
 python-deriv-api
 tarsafe
 python-dotenv
+tabulate

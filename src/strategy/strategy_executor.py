@@ -1,4 +1,5 @@
 import logging
+import uuid
 from typing import Dict, List, Optional
 import asyncio
 from datetime import datetime, timezone
@@ -37,87 +38,59 @@ class StrategyExecutor:
         }.items():
             blue_status(f"  - {param}: {value}")
 
-    async def execute_iteration(self, symbol: str):
-        """Execute one iteration of the strategy
+    async def execute_iteration(self, symbol: str) -> Optional[Dict]:
+        """Execute a single strategy iteration for a symbol and return the signal if generated
 
         Args:
             symbol (str): Trading symbol
+
+        Returns:
+            dict: Trading signal if generated, None otherwise
         """
         try:
-            cyan_status(f"Starting iteration for {symbol}")
-            # Initialize symbol if needed
-            if symbol not in self.active_symbols:
-                await self.initialize_symbol(symbol)
+            self.logger.info(f"Starting strategy iteration for {symbol}")
 
-            # Check if market is open
-            if not self.data_fetcher.is_market_open(symbol):
-                self.logger.info(f"Market closed for {symbol}")
-                return
-
-            # Get market data for calculations
-            cyan_status(f"Fetching historical data for {symbol}")
-            # Ensure we have more data for the 1-minute strategy
-            historical_data = await self.data_fetcher.get_historical_data(
-                symbol, 
-                count=max(
-                    self.trading_params.get('atr_period', 14),
-                    self.trading_params.get('LONG_WINDOW', 50)
-                ) + 50  # Increased buffer for better analysis
-            )
-
-            if historical_data is None or historical_data.empty:
-                magenta_warning(f"No historical data available for {symbol}")
-                return
-
-            cyan_status(f"Calculating volatility and ATR for {symbol}")
-            # Calculate volatility and ATR
-            returns = historical_data['close'].pct_change().dropna()
-            volatility = returns.std()
-
-            high_low = historical_data['high'] - historical_data['low']
-            high_close = abs(historical_data['high'] - historical_data['close'].shift())
-            low_close = abs(historical_data['low'] - historical_data['close'].shift())
-
-            # Create a DataFrame with the three series
-            tr_df = pd.DataFrame({
-                'hl': high_low,
-                'hc': high_close,
-                'lc': low_close
-            })
-
-            # Get the maximum value for each row
-            true_range = tr_df.max(axis=1)
-            atr = true_range.rolling(window=self.trading_params.get('atr_period', 14)).mean().iloc[-1]
-
-            # Log market condition metrics
-            self.logger.info(f"Market metrics - Volatility: {volatility:.6f}, ATR: {atr:.6f}, Last Price: {historical_data['close'].iloc[-1]:.4f}")
-            blue_status(f"Current market conditions - Volatility: {volatility:.6f}, ATR: {atr:.6f}")
-
-            # Generate trading signal
-            cyan_status(f"Generating trading signal for {symbol}")
+            # Get signal from strategy with detailed logging
+            self.logger.info(f"DEBUG: Requesting signal analysis for {symbol}")
             signal = await self.moving_average.analyze_symbol(symbol)
 
             if signal:
-                # Add volatility metrics
-                signal['volatility'] = volatility
-                signal['atr_value'] = atr
-                # For 1-minute binary trades
-                signal['duration'] = 1
-                signal['duration_unit'] = 'm'
+                self.logger.info(f"DEBUG: Signal received from strategy: {signal['type']} for {symbol}")
 
-                yellow_signal(f"Generated signal: {signal['type']} at {signal['entry_price']:.4f}")
+                # Add a unique ID to the signal for tracing
+                signal['id'] = str(uuid.uuid4())[:8]
 
-                if await self.validate_signal(signal):
-                    green_success(f"Validated signal for {symbol}, executing order")
-                    await self.order_executor.execute_order(signal)
+                # Validate signal with detailed logging
+                is_valid = await self.validate_signal(signal)
+                self.logger.info(f"DEBUG: Signal validation result: {is_valid}")
+
+                if is_valid:
+                    self.logger.info(f"Valid {signal['type']} signal generated for {symbol} - ID: {signal['id']}")
+
+                    # Add execution timestamp
+                    signal['execution_time'] = datetime.now(timezone.utc).timestamp()
+
+                    # Execute order with detailed logging
+                    self.logger.info(f"DEBUG: Executing order for signal: {signal['id']}")
+                    execution_result = await self.order_executor.execute_order(signal)
+
+                    if execution_result:
+                        self.logger.info(f"Order executed successfully - ID: {execution_result.get('order_id', 'unknown')}")
+                    else:
+                        self.logger.warning(f"Order execution failed for signal: {signal['id']}")
+
+                    # Return the signal for main loop tracking
+                    return signal
                 else:
-                    magenta_warning(f"Signal for {symbol} failed validation")
+                    self.logger.warning(f"Invalid signal generated for {symbol}: {signal}")
             else:
-                self.logger.debug(f"No signal generated for {symbol}")
+                self.logger.info(f"No signal generated for {symbol} in this iteration")
+
+            return None
 
         except Exception as e:
-            red_error(f"Error executing strategy for {symbol}: {str(e)}")
-            self.logger.exception(f"Error executing strategy for {symbol}")
+            self.logger.error(f"Error executing strategy iteration: {str(e)}", exc_info=True)
+            return None
 
     async def initialize_symbol(self, symbol: str):
         """Initialize symbol data and subscriptions

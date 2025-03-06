@@ -161,7 +161,9 @@ class MovingAverageStrategy:
             signal = None
             signal_details = {}
 
-            # BULLISH CONDITIONS - More flexible for 1-minute trading
+            self.logger.info(f"DEBUG: Analyzing signal conditions for {symbol}")
+            
+            # BULLISH CONDITIONS - More flexible for 1-minute trading with more permissive thresholds
             # 1. Traditional MA crossover (less restrictive) OR
             # 2. Mean reversion (when price is far below EMA and starting to correct) OR
             # 3. Momentum-based entry (sudden price movement with RSI confirmation)
@@ -170,23 +172,32 @@ class MovingAverageStrategy:
             ma_crossover_bullish = (
                 previous.ema_short <= previous.ema_medium and 
                 current.ema_short > current.ema_medium and
-                current.rsi < self.rsi_overbought
+                current.rsi < self.rsi_overbought + 5  # More permissive RSI threshold
             )
+            
+            if ma_crossover_bullish:
+                self.logger.info(f"DEBUG: Bullish MA crossover detected for {symbol}")
 
-            # Condition 2: Mean reversion bullish
+            # Condition 2: Mean reversion bullish - Relaxed parameters
             mean_reversion_bullish = (
                 self.enable_mean_reversion and
-                current.mean_distance < -0.002 and  # Price at least 0.2% below EMA
+                current.mean_distance < -0.001 and  # Only 0.1% below EMA (more sensitive)
                 current.price_momentum > 0 and      # Starting to move up
-                current.rsi > 30 and current.rsi < 50  # Not too oversold, not overbought
+                current.rsi > 25 and current.rsi < 60  # Wider RSI range
             )
+            
+            if mean_reversion_bullish:
+                self.logger.info(f"DEBUG: Bullish mean reversion detected for {symbol}")
 
-            # Condition 3: Momentum entry
+            # Condition 3: Momentum entry - Reduced threshold for more signals
             momentum_bullish = (
-                current.price_pct_change > self.momentum_threshold and
-                current.rsi > 40 and current.rsi < 70 and  # RSI in a reasonable range
-                current.volatility > self.volatility_threshold * 0.5  # Some volatility but not extreme
+                current.price_pct_change > self.momentum_threshold * 0.8 and  # 20% lower threshold
+                current.rsi > 35 and current.rsi < 75 and  # Wider RSI range
+                current.volatility > self.volatility_threshold * 0.3  # Lower volatility requirement
             )
+            
+            if momentum_bullish:
+                self.logger.info(f"DEBUG: Bullish momentum detected for {symbol}")
 
             if ma_crossover_bullish or mean_reversion_bullish or momentum_bullish:
                 # Determine which condition triggered
@@ -206,29 +217,38 @@ class MovingAverageStrategy:
                 signal = self._create_signal(symbol, 'CALL', current, signal_details)
 
             # BEARISH CONDITIONS - More flexible for 1-minute trading
-            # Similar conditions as bullish but reversed
+            # Similar conditions as bullish but reversed with more permissive parameters
 
             # Condition 1: MA crossover (relaxed)
             ma_crossover_bearish = (
                 previous.ema_short >= previous.ema_medium and
                 current.ema_short < current.ema_medium and
-                current.rsi > self.rsi_oversold
+                current.rsi > self.rsi_oversold - 5  # More permissive RSI threshold
             )
+            
+            if ma_crossover_bearish:
+                self.logger.info(f"DEBUG: Bearish MA crossover detected for {symbol}")
 
-            # Condition 2: Mean reversion bearish
+            # Condition 2: Mean reversion bearish - Relaxed parameters
             mean_reversion_bearish = (
                 self.enable_mean_reversion and
-                current.mean_distance > 0.002 and   # Price at least 0.2% above EMA
+                current.mean_distance > 0.001 and   # Only 0.1% above EMA (more sensitive)
                 current.price_momentum < 0 and      # Starting to move down
-                current.rsi < 70 and current.rsi > 50  # Not too overbought, not oversold
+                current.rsi < 75 and current.rsi > 40  # Wider RSI range
             )
+            
+            if mean_reversion_bearish:
+                self.logger.info(f"DEBUG: Bearish mean reversion detected for {symbol}")
 
-            # Condition 3: Momentum entry
+            # Condition 3: Momentum entry - Reduced threshold for more signals
             momentum_bearish = (
-                current.price_pct_change < -self.momentum_threshold and
-                current.rsi < 60 and current.rsi > 30 and  # RSI in a reasonable range 
-                current.volatility > self.volatility_threshold * 0.5  # Some volatility but not extreme
+                current.price_pct_change < -self.momentum_threshold * 0.8 and  # 20% lower threshold
+                current.rsi < 65 and current.rsi > 25 and  # Wider RSI range
+                current.volatility > self.volatility_threshold * 0.3  # Lower volatility requirement
             )
+            
+            if momentum_bearish:
+                self.logger.info(f"DEBUG: Bearish momentum detected for {symbol}")
 
             if ma_crossover_bearish or mean_reversion_bearish or momentum_bearish and not signal:
                 # Determine which condition triggered

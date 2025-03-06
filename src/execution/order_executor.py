@@ -34,8 +34,21 @@ class OrderExecutor:
         Returns:
             dict: Order details if successful
         """
-        self.logger.info(f"Entering execute_order with signal: {signal}")
-        yellow_signal(f"Processing {signal['type']} signal for {signal['symbol']}")
+        signal_id = signal.get('id', str(uuid.uuid4())[:8])
+        self.logger.info(f"Executing order for signal ID: {signal_id}", 
+                         extra={'signal_type': signal['type'], 'symbol': signal['symbol']})
+        yellow_signal(f"💰 Processing {signal['type']} signal for {signal['symbol']} (ID: {signal_id})")
+        
+        # Log signal details for debugging
+        self.logger.info(f"DEBUG: Signal details", extra={
+            'signal_id': signal_id,
+            'signal_type': signal['type'],
+            'symbol': signal['symbol'],
+            'entry_price': signal.get('entry_price'),
+            'stop_loss': signal.get('stop_loss'),
+            'take_profit': signal.get('take_profit'),
+            'time': datetime.now().strftime('%H:%M:%S')
+        })
 
         try:
             if not await self.validate_signal(signal):
@@ -104,16 +117,32 @@ class OrderExecutor:
             self.logger.info(f"Proposal response: {response}")
 
             if response and 'error' not in response:
-                # Buy contract
+                # Buy contract with detailed logging
                 buy_request = {
                     "buy": response['proposal']['id'],
                     "price": response['proposal']['ask_price']
                 }
 
-                self.logger.info(f"Sending buy request: {buy_request}")
-                yellow_signal(f"Executing {signal['type']} order for {signal['stake_amount']} USD...")
-                buy_response = await self.api.api.buy(buy_request)
-                self.logger.info(f"Buy response: {buy_response}")
+                signal_id = signal.get('id', 'unknown')
+                self.logger.info(f"DEBUG: Sending buy request for signal {signal_id}", 
+                                extra={'buy_request': buy_request, 'proposal_id': response['proposal']['id']})
+                yellow_signal(f"💸 Executing {signal['type']} order for {signal['stake_amount']} USD on {signal['symbol']}...")
+                
+                try:
+                    buy_response = await self.api.api.buy(buy_request)
+                    self.logger.info(f"DEBUG: Buy response received: {buy_response}")
+                    
+                    if 'error' in buy_response:
+                        error_msg = buy_response['error'].get('message', 'Unknown error')
+                        self.logger.error(f"Buy order failed for signal {signal_id}: {error_msg}")
+                        red_error(f"❌ Buy order failed: {error_msg}")
+                    else:
+                        self.logger.info(f"Buy order successful for signal {signal_id}", 
+                                        extra={'contract_id': buy_response.get('buy', {}).get('contract_id', 'unknown')})
+                except Exception as e:
+                    self.logger.error(f"Exception during buy order execution: {str(e)}", exc_info=True)
+                    red_error(f"❌ Exception during buy order: {str(e)}")
+                    buy_response = None
 
                 if buy_response and 'error' not in buy_response:
                     contract = buy_response['buy']

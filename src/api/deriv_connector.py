@@ -55,6 +55,15 @@ class DerivConnector:
         """Close API connection"""
         try:
             if self.api:
+                # First try to forget all subscriptions
+                try:
+                    if self.connected and self.authorized:
+                        await self.api.forget_all('ticks')
+                        logger.info("Unsubscribed from all ticks")
+                except Exception as unsub_error:
+                    logger.error(f"Error unsubscribing from ticks: {str(unsub_error)}")
+                
+                # Then clear API connection
                 await self.api.clear()
                 self.connected = False
                 self.authorized = False
@@ -63,6 +72,43 @@ class DerivConnector:
         except Exception as e:
             logger.error(f"Disconnection error: {str(e)}")
 
+    async def subscribe_to_price(self, symbol: str, callback: Callable) -> Optional[Any]:
+        """Subscribe to price updates for a symbol
+        
+        Args:
+            symbol (str): Symbol to subscribe to
+            callback (Callable): Callback function for price updates
+            
+        Returns:
+            Optional[Any]: Subscription source object if successful
+        """
+        try:
+            if not self.connected:
+                logger.info("Connection was lost, attempting to reconnect in subscribe_to_price")
+                connect_success, error_message = await self.connect()
+                if not connect_success:
+                    logger.error(f"Reconnection failed in subscribe_to_price: {error_message}")
+                    return None
+            
+            # Check if we already have a subscription for this symbol
+            if symbol in self.active_subscriptions:
+                logger.info(f"Already subscribed to {symbol}")
+                # Return the existing subscription or None to indicate we're already subscribed
+                return None
+            
+            # Subscribe to the symbol
+            source = await self.api.subscribe({'ticks': symbol})
+            if source:
+                subscription = source.subscribe(callback)
+                self.active_subscriptions.add(symbol)
+                logger.info(f"Successfully subscribed to {symbol}")
+                return source
+            return None
+            
+        except Exception as e:
+            logger.error(f"Subscribe to price error: {str(e)}")
+            return None
+            
     async def proposal(self, proposal_params: Dict) -> Optional[Dict]:
         """Send proposal request to API
 
